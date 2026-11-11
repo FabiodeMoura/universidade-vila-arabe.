@@ -1,8 +1,9 @@
 import { supa, estado, ehGestao, ehGerente } from '../supa.js';
 import { el, esc, fmtData, barra, vazio, statusTag, opcoes, iniciais } from '../ui.js';
+import { painelGestor } from './painel.js';
 
 export async function paginaInicio() {
-  if (ehGestao() || ehGerente()) return painelGestao();
+  if (ehGestao() || ehGerente()) return painelGestor();
   return painelFuncionario();
 }
 
