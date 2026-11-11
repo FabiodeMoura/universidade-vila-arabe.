@@ -207,13 +207,18 @@ async function abrirFicha(resumo, recarregar) {
       aba.innerHTML = (data || []).length ? `<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Treinamento</th><th>Origem</th><th>Prazo</th><th>Progresso</th><th>Nota</th><th>Situação</th><th></th></tr></thead><tbody>
         ${data.map((a) => `<tr><td><strong>${esc(a.cursos?.titulo)}</strong>${a.obrigatorio ? '' : ' <span class="muted pequeno">(opcional)</span>'}</td><td class="pequeno">${esc(a.origem)}</td>
           <td>${fmtData(a.prazo)}</td><td style="min-width:110px">${barra(a.progresso)}</td><td class="num">${a.nota != null ? Math.round(a.nota) : '—'}</td><td>${statusTag(a.status, a.prazo)}</td>
-          <td>${podeEditar && a.status !== 'nao_iniciado' ? `<button class="btn claro pequeno" data-reabrir="${a.id}">Reabrir</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          <td><div class="linha" style="justify-content:flex-end">${podeEditar && !['aprovado', 'concluido'].includes(a.status) ? `<button class="btn claro pequeno" data-editar="${a.id}">Editar</button>` : ''}${podeEditar && a.status !== 'nao_iniciado' ? `<button class="btn claro pequeno" data-reabrir="${a.id}">Reabrir</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`
         : vazio('Nenhum treinamento atribuído.');
+      const editar = (id) => editarAtribuicao(data.find((a) => a.id === id), () => abas.treinos());
+      aba.querySelectorAll('[data-editar]').forEach((b) => b.onclick = () => editar(b.dataset.editar));
       aba.querySelectorAll('[data-reabrir]').forEach((b) => b.onclick = async () => {
-        if (!(await confirmar('Reabrir este treinamento? O progresso e a nota serão zerados e o funcionário fará de novo.', { botao: 'Reabrir' }))) return;
+        if (!(await confirmar('Reabrir este treinamento? O progresso e a nota serão zerados e o funcionário fará de novo. Em seguida você poderá ajustar o prazo.', { botao: 'Reabrir' }))) return;
         const { error: e } = await supa.rpc('reabrir_treinamento', { p_atribuicao: b.dataset.reabrir });
         if (e) return toast(msgErro(e), 'erro');
-        toast('Treinamento reaberto.'); abas.treinos();
+        toast('Treinamento reaberto. Ajuste o prazo se precisar.');
+        await abas.treinos();
+        const { data: atual } = await supa.from('atribuicoes').select('id,status,prazo,obrigatorio, cursos(titulo)').eq('id', b.dataset.reabrir).single();
+        if (atual) editarAtribuicao(atual, () => abas.treinos());
       });
     },
     integ: async () => {
@@ -289,4 +294,34 @@ async function abrirFicha(resumo, recarregar) {
     abas[b.dataset.aba]();
   });
   abas.dados();
+}
+
+// ---------- editar um treinamento atribuído (prazo, obrigatório, remover) ----------
+function editarAtribuicao(a, aoSalvar) {
+  if (!a) return;
+  const form = el(`<form novalidate>
+    <p style="margin-top:0"><strong>${esc(a.cursos?.titulo || 'Treinamento')}</strong></p>
+    <div class="campo"><label>Prazo para concluir</label><input class="entrada" type="date" name="prazo" value="${esc(a.prazo || '')}"></div>
+    <div class="campo"><label class="check"><input type="checkbox" name="obrigatorio" ${a.obrigatorio ? 'checked' : ''}> Treinamento obrigatório</label>
+      <span class="ajuda">Os obrigatórios contam na Central de Pendências e nos indicadores da loja.</span></div>
+  </form>`);
+  const { el: m, fechar } = abrirModal({ titulo: 'Editar treinamento', corpo: form, tamanho: 'estreito',
+    rodape: `<button class="btn perigo" data-rem style="margin-right:auto">Remover</button><button class="btn claro" data-c>Cancelar</button><button class="btn" data-s>Salvar</button>` });
+  m.querySelector('[data-c]').onclick = fechar;
+  m.querySelector('[data-s]').onclick = async (ev) => {
+    const d = lerForm(form);
+    if (d.prazo && d.prazo < new Date().toISOString().slice(0, 10) &&
+        !(await confirmar('O prazo escolhido já passou, e o treinamento vai aparecer como em atraso. Salvar assim mesmo?', { botao: 'Salvar' }))) return;
+    await comCarregando(ev.currentTarget, async () => {
+      const { error } = await supa.from('atribuicoes').update({ prazo: d.prazo, obrigatorio: !!d.obrigatorio }).eq('id', a.id);
+      if (error) return toast(msgErro(error), 'erro');
+      toast('Treinamento atualizado.'); fechar(); aoSalvar && aoSalvar();
+    });
+  };
+  m.querySelector('[data-rem]').onclick = async () => {
+    if (!(await confirmar('Remover este treinamento do funcionário? O progresso dele neste curso será apagado.', { botao: 'Remover', perigo: true }))) return;
+    const { error } = await supa.from('atribuicoes').delete().eq('id', a.id);
+    if (error) return toast(msgErro(error), 'erro');
+    toast('Treinamento removido.'); fechar(); aoSalvar && aoSalvar();
+  };
 }
