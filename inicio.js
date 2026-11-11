@@ -98,16 +98,16 @@ function montarPainel(d, gerente) {
   requestAnimationFrame(() => {
     if (!window.Chart) return;
     const C = window.Chart;
-    C.defaults.font.family = "'DM Sans', sans-serif";
-    C.defaults.color = '#4a5550';
+    C.defaults.font.family = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif";
+    C.defaults.color = '#4b5563';
     new C(w.querySelector('#g-lojas'), {
       type: 'bar',
-      data: { labels: lojas.map((l) => l.nome.replace('Vila Árabe ', '')), datasets: [{ data: lojas.map((l) => l.perc ?? 0), backgroundColor: '#1f4d3a', borderRadius: 6, maxBarThickness: 22 }] },
+      data: { labels: lojas.map((l) => l.nome.replace('Vila Árabe ', '')), datasets: [{ data: lojas.map((l) => l.perc ?? 0), backgroundColor: '#0d9488', borderRadius: 6, maxBarThickness: 22 }] },
       options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${c.raw}% concluído` } } },
-                 scales: { x: { max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: '#eef0ef' } }, y: { grid: { display: false } } } },
+                 scales: { x: { max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: '#f3f4f6' } }, y: { grid: { display: false } } } },
     });
     const rot = { aprovado: 'Aprovados', concluido: 'Concluídos', em_andamento: 'Em andamento', nao_iniciado: 'Não iniciados', reprovado: 'Reprovados' };
-    const cor = { aprovado: '#1f4d3a', concluido: '#2a6449', em_andamento: '#c9a227', nao_iniciado: '#cfd5d2', reprovado: '#c0392b' };
+    const cor = { aprovado: '#0d9488', concluido: '#14b8a6', em_andamento: '#f59e0b', nao_iniciado: '#d1d5db', reprovado: '#dc2626' };
     const chaves = Object.keys(st);
     new C(w.querySelector('#g-status'), {
       type: 'doughnut',
@@ -132,9 +132,9 @@ async function graficoCargos(canvas, loja) {
   const linhas = Object.entries(por).sort((a, b) => b[1].f / b[1].t - a[1].f / a[1].t);
   new window.Chart(canvas, {
     type: 'bar',
-    data: { labels: linhas.map((l) => l[0]), datasets: [{ data: linhas.map((l) => Math.round((100 * l[1].f) / l[1].t)), backgroundColor: '#c9a227', borderRadius: 6, maxBarThickness: 34 }] },
+    data: { labels: linhas.map((l) => l[0]), datasets: [{ data: linhas.map((l) => Math.round((100 * l[1].f) / l[1].t)), backgroundColor: '#4f46e5', borderRadius: 6, maxBarThickness: 34 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${c.raw}% concluído` } } },
-               scales: { y: { max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: '#eef0ef' } }, x: { grid: { display: false } } } },
+               scales: { y: { max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: '#f3f4f6' } }, x: { grid: { display: false } } } },
   });
 }
 
