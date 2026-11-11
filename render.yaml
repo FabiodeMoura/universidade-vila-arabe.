@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: universidade-vila-arabe
+    runtime: static
+    buildCommand: echo "sem build"
+    staticPublishPath: ./site
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /js/*
+        name: Cache-Control
+        value: no-cache
