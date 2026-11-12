@@ -546,3 +546,6 @@ pre.exemplo { background: var(--fundo); border: 1px solid var(--borda); border-r
 }
 .login-frase { margin: 22px 0 0; padding: 14px 18px; max-width: 440px; border-left: 4px solid var(--lime-400); background: rgba(255,255,255,.12); border-radius: 0 12px 12px 0; font-size: 18px; font-weight: 600; font-style: italic; line-height: 1.45; color: #fff; }
 @media (max-width: 640px) { .login-frase { font-size: 16px; margin-top: 16px; } }
+.resumo-periodo { background: #fff; border: 1px solid var(--borda); border-left: 4px solid var(--teal-600); border-radius: var(--raio-sm); padding: 10px 14px; font-size: 14px; color: var(--tinta-2); margin-bottom: 14px; }
+.periodo-datas .entrada { min-width: 150px; }
+@media (max-width: 640px) { .periodo-datas { flex: 1 1 calc(50% - 6px); } #f-aplicar.periodo-datas { flex-basis: 100%; } }
