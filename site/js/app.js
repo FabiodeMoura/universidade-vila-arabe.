@@ -113,6 +113,7 @@ function telaLogin(aviso = '') {
       <div>
         <h1>Aprender aqui é crescer junto.</h1>
         <p>Treinamentos, trilhas por função, avaliações e certificados de toda a rede Vila Árabe em um só lugar.</p>
+        <blockquote class="login-frase">“Só existe melhoria do atendimento com a busca constante por conhecimentos.”</blockquote>
         <div class="login-pontos"><div>Sua trilha de integração e da sua função</div><div>Certificado automático ao ser aprovado</div><div>Pontos, medalhas e ranking das lojas</div></div>
       </div>
       <small style="color:rgba(255,255,255,.5)">Padarias · Lanchonetes · Empórios</small>
