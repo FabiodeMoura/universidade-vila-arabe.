@@ -1,5 +1,6 @@
 import { supa, estado, ehGestao, ehGerente, ehAdmin, msgErro, gerenciarUsuario } from '../supa.js';
 import { el, esc, toast, fmtData, barra, vazio, statusTag, opcoes, lerForm, abrirModal, confirmar, comCarregando, iniciais, PAPEL, exportarCSV } from '../ui.js';
+import { abrirDiploma } from '../diploma.js';
 import { urlLink, numeroWhats, mensagemPendencias, abrirWhats, copiar, pendenciasDe } from '../whats.js';
 
 const nomeLoja = (id) => estado.lojas.find((l) => l.id === id)?.nome?.replace('Vila Árabe ', '') || '—';
@@ -208,12 +209,18 @@ async function abrirFicha(resumo, recarregar) {
     },
     treinos: async () => {
       aba.innerHTML = '<div class="vazio"><div class="spinner" style="margin:0 auto"></div></div>';
-      const { data } = await supa.from('atribuicoes').select('id,status,progresso,nota,prazo,obrigatorio,origem,concluido_em, cursos(titulo)').eq('perfil_id', x.id).order('prazo');
+      const { data } = await supa.from('atribuicoes').select('id,status,progresso,nota,prazo,obrigatorio,origem,concluido_em,curso_id, cursos(titulo,carga_horaria_min,responsavel_nome)').eq('perfil_id', x.id).order('prazo');
+      const { data: certs } = await supa.from('certificados').select('id,codigo,curso_id,nota,carga_horaria_min,responsavel_nome,emitido_em').eq('perfil_id', x.id);
+      const certDe = (a) => (certs || []).find((c) => c.curso_id === a.curso_id);
       aba.innerHTML = (data || []).length ? `<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Treinamento</th><th>Origem</th><th>Prazo</th><th>Progresso</th><th>Nota</th><th>Situação</th><th></th></tr></thead><tbody>
         ${data.map((a) => `<tr><td><strong>${esc(a.cursos?.titulo)}</strong>${a.obrigatorio ? '' : ' <span class="muted pequeno">(opcional)</span>'}</td><td class="pequeno">${esc(a.origem)}</td>
           <td>${fmtData(a.prazo)}</td><td style="min-width:110px">${barra(a.progresso)}</td><td class="num">${a.nota != null ? Math.round(a.nota) : '—'}</td><td>${statusTag(a.status, a.prazo)}</td>
-          <td><div class="linha" style="justify-content:flex-end">${podeEditar && !['aprovado', 'concluido'].includes(a.status) ? `<button class="btn claro pequeno" data-editar="${a.id}">Editar</button>` : ''}${podeEditar && a.status !== 'nao_iniciado' ? `<button class="btn claro pequeno" data-reabrir="${a.id}">Reabrir</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`
+          <td><div class="linha" style="justify-content:flex-end">${certDe(a) ? `<button class="btn claro pequeno" data-diploma="${a.id}" title="Diploma em PDF">🎓 Diploma</button>` : ''}${podeEditar && !['aprovado', 'concluido'].includes(a.status) ? `<button class="btn claro pequeno" data-editar="${a.id}">Editar</button>` : ''}${podeEditar && a.status !== 'nao_iniciado' ? `<button class="btn claro pequeno" data-reabrir="${a.id}">Reabrir</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`
         : vazio('Nenhum treinamento atribuído.');
+      aba.querySelectorAll('[data-diploma]').forEach((b) => b.onclick = () => {
+        const a = data.find((y) => y.id === b.dataset.diploma), c = certDe(a);
+        abrirDiploma({ ...c, nome: x.nome, curso: a.cursos?.titulo, carga_horaria_min: c.carga_horaria_min ?? a.cursos?.carga_horaria_min, responsavel_nome: c.responsavel_nome || a.cursos?.responsavel_nome });
+      });
       const editar = (id) => editarAtribuicao(data.find((a) => a.id === id), () => abas.treinos());
       aba.querySelectorAll('[data-editar]').forEach((b) => b.onclick = () => editar(b.dataset.editar));
       aba.querySelectorAll('[data-reabrir]').forEach((b) => b.onclick = async () => {
