@@ -17,7 +17,7 @@ function corCalor(p) {
 
 function rotuloPeriodo(iso, grao) {
   const d = new Date(iso);
-  if (grao === 'week') return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  if (grao === 'day' || grao === 'week') return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   return `${MESES[d.getUTCMonth()]}/${String(d.getUTCFullYear()).slice(2)}`;
 }
 
@@ -37,7 +37,8 @@ export async function painelGestor() {
   const p = estado.perfil;
   const gerente = ehGerente();
   const lojasVis = gerente ? estado.lojas.filter((l) => l.id === p.loja_id || l.gerente_id === p.id) : estado.lojas.filter((l) => l.ativo);
-  const filtro = { loja: '', cargo: '', meses: 6 };
+  const filtro = { loja: '', cargo: '', meses: 6, inicio: null, fim: null };
+  const hojeISO = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
 
   const raiz = el(`<div>
     <div class="cab-pagina">
@@ -48,7 +49,10 @@ export async function painelGestor() {
       <div class="campo-filtro"><label>Loja</label><select class="entrada" id="f-loja">${opcoes(lojasVis, '', { vazio: gerente && lojasVis.length <= 1 ? 'Minha loja' : 'Todas as lojas', rotulo: (l) => nomeCurto(l.nome) })}</select></div>
       <div class="campo-filtro"><label>Função</label><select class="entrada" id="f-cargo">${opcoes(estado.cargos, '', { vazio: 'Todas as funções' })}</select></div>
       <div class="campo-filtro"><label>Período</label>
-        <div class="segmentado" id="f-meses">${[[1, '1 mês'], [3, '3 meses'], [6, '6 meses'], [12, '12 meses']].map(([v, t]) => `<button data-m="${v}" class="${v === 6 ? 'ativo' : ''}">${t}</button>`).join('')}</div></div>
+        <div class="segmentado" id="f-meses">${[[1, '1 mês'], [3, '3 meses'], [6, '6 meses'], [12, '12 meses']].map(([v, t]) => `<button data-m="${v}" class="${v === 6 ? 'ativo' : ''}">${t}</button>`).join('')}<button data-m="p">📅 Escolher datas</button></div></div>
+      <div class="campo-filtro periodo-datas oculto" id="f-datas"><label>De</label><input class="entrada" type="date" id="f-ini" max="${hojeISO}"></div>
+      <div class="campo-filtro periodo-datas oculto"><label>Até</label><input class="entrada" type="date" id="f-fim" max="${hojeISO}" value="${hojeISO}"></div>
+      <button class="btn pequeno periodo-datas oculto" id="f-aplicar" style="align-self:flex-end">Aplicar</button>
       <button class="btn claro pequeno" id="limpar" style="align-self:flex-end">Limpar filtros</button>
     </div>
     <div id="area" class="mt"></div></div>`);
@@ -60,7 +64,7 @@ export async function painelGestor() {
     const args = { p_loja: filtro.loja || null, p_cargo: filtro.cargo || null };
     const [ind, evo] = await Promise.all([
       supa.rpc('painel_indicadores', args),
-      supa.rpc('painel_evolucao', { ...args, p_meses: filtro.meses }),
+      supa.rpc('painel_evolucao', { ...args, p_meses: filtro.meses, p_inicio: filtro.inicio, p_fim: filtro.fim }),
     ]);
     if (ind.error || evo.error) { area.innerHTML = `<div class="card">${vazio((ind.error || evo.error).message, '⚠️')}</div>`; return; }
     area.innerHTML = '';
@@ -69,12 +73,27 @@ export async function painelGestor() {
   };
   raiz.querySelector('#f-loja').onchange = (e) => { filtro.loja = e.target.value; carregar(); };
   raiz.querySelector('#f-cargo').onchange = (e) => { filtro.cargo = e.target.value; carregar(); };
+  const mostrarDatas = (sim) => raiz.querySelectorAll('.periodo-datas').forEach((x) => x.classList.toggle('oculto', !sim));
   raiz.querySelectorAll('#f-meses button').forEach((b) => b.onclick = () => {
     raiz.querySelectorAll('#f-meses button').forEach((x) => x.classList.toggle('ativo', x === b));
-    filtro.meses = Number(b.dataset.m); carregar();
+    if (b.dataset.m === 'p') {
+      mostrarDatas(true);
+      const ini = raiz.querySelector('#f-ini');
+      if (!ini.value) { const d = new Date(hojeISO + 'T12:00:00'); d.setDate(1); ini.value = d.toISOString().slice(0, 10); }
+      ini.focus();
+      return;
+    }
+    mostrarDatas(false);
+    filtro.meses = Number(b.dataset.m); filtro.inicio = null; filtro.fim = null; carregar();
   });
+  raiz.querySelector('#f-aplicar').onclick = () => {
+    const ini = raiz.querySelector('#f-ini').value, fim = raiz.querySelector('#f-fim').value || hojeISO;
+    if (!ini) return toast('Escolha a data inicial.', 'erro');
+    if (ini > fim) return toast('A data inicial precisa ser antes da final.', 'erro');
+    filtro.inicio = ini; filtro.fim = fim; carregar();
+  };
   raiz.querySelector('#limpar').onclick = () => {
-    filtro.loja = ''; filtro.cargo = ''; filtro.meses = 6;
+    filtro.loja = ''; filtro.cargo = ''; filtro.meses = 6; filtro.inicio = null; filtro.fim = null; mostrarDatas(false);
     raiz.querySelector('#f-loja').value = ''; raiz.querySelector('#f-cargo').value = '';
     raiz.querySelectorAll('#f-meses button').forEach((x) => x.classList.toggle('ativo', x.dataset.m === '6'));
     carregar();
@@ -90,15 +109,19 @@ function montar(d, e, filtro, irLoja, irCargo) {
   const serie = e.serie || [];
   const concluidosPeriodo = serie.reduce((a, s) => a + (s.concluidos || 0), 0);
   const percs = serie.map((s) => s.perc);
-  const nomePer = e.grao === 'week' ? 'semana' : 'mês';
+  const nomePer = e.grao === 'day' ? 'dia' : e.grao === 'week' ? 'semana' : 'mês';
+  const fmtD = (iso) => iso ? iso.split('-').reverse().join('/') : '';
+  const textoPeriodo = filtro.inicio ? `de ${fmtD(e.inicio || filtro.inicio)} a ${fmtD(e.fim || filtro.fim)}` : `nos últimos ${filtro.meses} ${filtro.meses > 1 ? 'meses' : 'mês'}`;
+  const r = e.resumo || {};
   const lojaSel = estado.lojas.find((l) => l.id === filtro.loja);
   const cargoSel = estado.cargos.find((c) => c.id === filtro.cargo);
   const recorte = [lojaSel ? nomeCurto(lojaSel.nome) : 'toda a rede', cargoSel ? cargoSel.nome : null].filter(Boolean).join(' · ');
 
   const w = el(`<div>
+    <div class="resumo-periodo">📅 <strong>Período ${esc(textoPeriodo)}</strong> · ${r.atribuidos ?? 0} treinamentos atribuídos · ${r.concluidos ?? 0} concluídos · ${r.reprovados ?? 0} reprovação(ões) em provas</div>
     <div class="grade c4">
       ${kpi('Conclusão geral', `${d.perc_conclusao}%`, `${d.concluidos} de ${total} treinamentos ${variacao(percs.map((x) => x == null ? null : Math.round(x)))}`, '🎯', true)}
-      ${kpi('Concluídos no período', concluidosPeriodo, `nos últimos ${filtro.meses} ${filtro.meses > 1 ? 'meses' : 'mês'}`, '✅')}
+      ${kpi('Concluídos no período', r.concluidos ?? concluidosPeriodo, `${textoPeriodo}${r.media != null ? ` · média ${r.media}` : ''}`, '✅')}
       ${kpi('Média das avaliações', d.media_notas || '—', 'nota de 0 a 100', '📝')}
       ${kpi('Funcionários', d.funcionarios, `${d.lojas} loja(s) · ${d.cursos_publicados} cursos publicados`, '👥')}
     </div>
