@@ -7,6 +7,9 @@ import { paginaFuncionarios } from './paginas/funcionarios.js';
 import { paginaLojas } from './paginas/lojas.js';
 import { paginaCargos } from './paginas/cargos.js';
 import { paginaConta } from './paginas/conta.js';
+import { paginaCursos } from './paginas/cursos.js';
+import { paginaCurso } from './paginas/curso.js';
+import { paginaCertificados, telaValidar } from './paginas/certificados.js';
 
 const app = document.getElementById('app');
 
@@ -16,29 +19,42 @@ const MENU = [
   { grupo: 'Universidade Vila Árabe' },
   { rota: 'inicio', ic: '🏠', nome: 'Início', para: ['admin', 'rh', 'gerente', 'funcionario'], pagina: paginaInicio },
   { rota: 'trilha', ic: '🧭', nome: 'Minha trilha', para: ['gerente', 'funcionario'], pagina: paginaTrilha },
+  { rota: 'certificados', ic: '🎓', nome: 'Meus certificados', para: ['gerente', 'funcionario'], pagina: paginaCertificados },
   { rota: 'conta', ic: '👤', nome: 'Minha conta', para: ['admin', 'rh', 'gerente', 'funcionario'], pagina: paginaConta },
   { grupo: 'Área gerencial', para: ['gerente'] },
   { rota: 'equipe', ic: '👥', nome: 'Minha equipe', para: ['gerente'], pagina: paginaFuncionarios },
   { rota: 'minhas-lojas', ic: '🏪', nome: 'Minha loja', para: ['gerente'], pagina: paginaLojas },
   { grupo: 'Administração RH', para: ['admin', 'rh'] },
+  { rota: 'cursos', ic: '📚', nome: 'Criar e editar cursos', para: ['admin', 'rh'], pagina: paginaCursos },
   { rota: 'funcionarios', ic: '🧑‍🍳', nome: 'Cadastro de funcionários', para: ['admin', 'rh'], pagina: paginaFuncionarios },
   { rota: 'lojas', ic: '🏪', nome: 'Gestão de lojas', para: ['admin', 'rh'], pagina: paginaLojas },
   { rota: 'cargos', ic: '🗂️', nome: 'Gestão de cargos e setores', para: ['admin', 'rh'], pagina: paginaCargos },
 ];
+// Telas fora do menu
+const OCULTAS = [
+  { rota: 'curso', nome: 'Treinamento', menu: 'trilha', para: ['admin', 'rh', 'gerente', 'funcionario'], pagina: paginaCurso },
+];
 const ROTAS_LIVRES = { 'nova-senha': telaNovaSenha };
+
+// "#/cursos/abc" -> ['cursos', 'abc']
+const partesRota = () => location.hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean);
+let entrandoPorLink = false;
 
 // ---------------- autenticação ----------------
 async function iniciar() {
   const hash = location.hash || '';
   if (hash.includes('type=recovery')) { location.hash = '#/nova-senha'; }
+  const [r0, r1, r2] = partesRota();
+  if (r0 === 'l' && r1) return entrarPorLink(r1, r2);
   const { data: { session } } = await supa.auth.getSession();
+  if (!session && r0 === 'validar') return telaValidarPublica(r1);
   if (!session) return telaLogin();
   await entrar(session.user);
 }
 
 supa.auth.onAuthStateChange((evento) => {
   if (evento === 'PASSWORD_RECOVERY') location.hash = '#/nova-senha';
-  if (evento === 'SIGNED_OUT') { estado.usuario = null; estado.perfil = null; telaLogin(); }
+  if (evento === 'SIGNED_OUT' && !entrandoPorLink) { estado.usuario = null; estado.perfil = null; telaLogin(); }
 });
 
 async function entrar(user) {
@@ -55,6 +71,38 @@ async function entrar(user) {
   supa.from('acessos').insert({ perfil_id: perfil.id }).then(() => {});
   montarCasca();
   rotear();
+}
+
+// Entrada pelo link pessoal enviado no WhatsApp (sem senha)
+async function entrarPorLink(token, cursoId) {
+  entrandoPorLink = true;
+  app.innerHTML = `<div class="carregando-tela"><div style="text-align:center"><div class="spinner" style="margin:0 auto"></div><p class="muted">Entrando na Universidade Vila Árabe…</p></div></div>`;
+  try {
+    const { data, error } = await supa.functions.invoke('entrar-link', { body: { token } });
+    if (error) {
+      let det = null;
+      try { det = await error.context.json(); } catch (_) { /* sem corpo */ }
+      throw new Error(det?.erro || 'Não foi possível entrar pelo link. Tente de novo.');
+    }
+    if (data?.erro) throw new Error(data.erro);
+    const { data: atual } = await supa.auth.getSession();
+    if (atual.session) await supa.auth.signOut({ scope: 'local' });
+    let r = await supa.auth.verifyOtp({ token_hash: data.token_hash, type: data.tipo === 'signup' ? 'signup' : 'magiclink' });
+    if (r.error) r = await supa.auth.verifyOtp({ token_hash: data.token_hash, type: 'email' });
+    if (r.error) throw r.error;
+    history.replaceState(null, '', location.pathname + (cursoId ? `#/curso/${cursoId}` : '#/trilha'));
+    entrandoPorLink = false;
+    await entrar(r.data.user);
+  } catch (e) {
+    entrandoPorLink = false;
+    history.replaceState(null, '', location.pathname);
+    telaLogin(msgErro(e));
+  }
+}
+
+function telaValidarPublica(codigo) {
+  app.innerHTML = '';
+  telaValidar(codigo).then((t) => app.append(t));
 }
 
 function telaLogin(aviso = '') {
@@ -187,21 +235,28 @@ function montarCasca() {
 // ---------------- roteador ----------------
 async function rotear() {
   if (!estado.perfil) return;
-  const rota = (location.hash.replace(/^#\/?/, '').split('?')[0] || 'inicio');
+  const [rota = 'inicio', param] = partesRota();
+  if (rota === 'l' && param) return entrarPorLink(param, partesRota()[2]);
   casca.classList.remove('menu-aberto');
-  casca.querySelectorAll('.menu a').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === rota));
+  const oculta = OCULTAS.find((m) => m.rota === rota);
+  casca.querySelectorAll('.menu a').forEach((a) => a.classList.toggle('ativo', a.dataset.rota === (oculta?.menu || rota)));
+  if (rota === 'validar') {
+    tituloTopo.textContent = 'Validar certificado';
+    areaPagina.innerHTML = ''; areaPagina.append(await telaValidar(param));
+    return;
+  }
   if (ROTAS_LIVRES[rota]) {
     tituloTopo.textContent = 'Nova senha';
     areaPagina.innerHTML = ''; areaPagina.append(ROTAS_LIVRES[rota]());
     return;
   }
-  const item = MENU.find((m) => m.rota === rota && (!m.para || m.para.includes(estado.perfil.papel)));
+  const item = [...MENU, ...OCULTAS].find((m) => m.rota === rota && (!m.para || m.para.includes(estado.perfil.papel)));
   if (!item) { location.hash = '#/inicio'; return; }
   tituloTopo.textContent = item.nome;
   document.title = `${item.nome} · Universidade Vila Árabe`;
   areaPagina.innerHTML = '<div class="carregando-tela" style="min-height:40vh"><div class="spinner"></div></div>';
   try {
-    const conteudo = await item.pagina({ rota });
+    const conteudo = await item.pagina({ rota, param });
     areaPagina.innerHTML = '';
     if (conteudo) areaPagina.append(conteudo);
     window.scrollTo(0, 0);

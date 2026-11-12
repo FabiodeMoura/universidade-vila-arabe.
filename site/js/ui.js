@@ -126,3 +126,20 @@ export function exportarCSV(nome, cabecalho, linhas) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
+
+// Nas telas estreitas as tabelas viram cartões: cada célula recebe o nome da coluna.
+export function rotularTabelas(raiz = document) {
+  raiz.querySelectorAll('table.tabela:not(.calor)').forEach((t) => {
+    const cab = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    if (!cab.length) return;
+    t.querySelectorAll('tbody tr').forEach((tr) => {
+      [...tr.children].forEach((td, i) => { if (!td.hasAttribute('data-label') && td.colSpan === 1) td.setAttribute('data-label', cab[i] || ''); });
+    });
+  });
+}
+let agendado = false;
+new MutationObserver(() => {
+  if (agendado) return;
+  agendado = true;
+  requestAnimationFrame(() => { agendado = false; rotularTabelas(); });
+}).observe(document.documentElement, { childList: true, subtree: true });
