@@ -164,8 +164,8 @@ async function painelFuncionario() {
     <div class="grade lado mt">
       <div class="card"><div class="card-cab"><h3>Próximos treinamentos</h3><a class="link-btn pequeno" href="#/trilha">Ver todos</a></div>
         ${(d.proximos || []).length ? d.proximos.map((c) => `
-          <div class="curso-mini"><div class="capa">📘</div><div class="info"><strong>${esc(c.titulo)}</strong>
-            <div class="meta"><span>Prazo: ${fmtData(c.prazo)}</span>${statusTag(c.status, c.prazo)}</div>${barra(c.progresso)}</div></div>`).join('')
+          <a class="curso-mini link" href="#/curso/${c.curso_id}"><div class="capa">📘</div><div class="info"><strong>${esc(c.titulo)}</strong>
+            <div class="meta"><span>Prazo: ${fmtData(c.prazo)}</span>${statusTag(c.status, c.prazo)}</div>${barra(c.progresso)}</div><span class="seta">›</span></a>`).join('')
           : vazio('Nenhum treinamento pendente.', '🎉')}
       </div>
       <div>

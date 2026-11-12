@@ -1,6 +1,6 @@
 // Painel do gestor (RH, administrador e gerente): evolução dos treinamentos
 import { supa, estado, ehGerente } from '../supa.js';
-import { el, esc, fmtData, barra, vazio, opcoes, iniciais, exportarCSV } from '../ui.js';
+import { el, esc, fmtData, barra, vazio, opcoes, iniciais, exportarCSV, toast } from '../ui.js';
 
 const COR = { teal: '#0d9488', indigo: '#4f46e5', ambar: '#d97706', cinza: '#94a3b8', vermelho: '#dc2626', grade: '#f3f4f6', texto: '#4b5563' };
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -130,7 +130,7 @@ function montar(d, e, filtro, irLoja, irCargo) {
     </div>
 
     <div class="card mt">
-      <div class="card-cab"><div><h3>Lojas × funções</h3><div class="sub">% de conclusão hoje em cada combinação de loja e cargo. Passe o mouse para ver os números.</div></div></div>
+      <div class="card-cab"><div><h3>Lojas × funções</h3><div class="sub">% de conclusão hoje em cada combinação de loja e cargo. Passe o mouse ou toque numa célula para ver os números.</div></div></div>
       ${matriz(e.matriz)}
     </div>
 
@@ -161,6 +161,8 @@ function montar(d, e, filtro, irLoja, irCargo) {
     </div>
   </div>`);
 
+  // no celular não existe "passar o mouse": tocar na célula mostra os números
+  w.addEventListener('click', (ev) => { const c = ev.target.closest('.celula[title]'); if (c) { ev.stopPropagation(); toast(c.title); } }, true);
   // cliques nos mapas de calor filtram o painel
   w.querySelectorAll('[data-filtro-loja]').forEach((tr) => tr.onclick = () => irLoja(tr.dataset.filtroLoja));
   w.querySelectorAll('[data-filtro-cargo]').forEach((tr) => tr.onclick = () => irCargo(tr.dataset.filtroCargo));

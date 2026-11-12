@@ -27,7 +27,7 @@ export async function paginaTrilha() {
   });
 
   const w = el(`<div>
-    <div class="cab-pagina"><div><h1>Minha trilha</h1><p>Seus treinamentos organizados por etapa. O progresso é salvo automaticamente.</p></div></div>
+    <div class="cab-pagina"><div><h1>Minha trilha</h1><p>Seus treinamentos organizados por etapa. Toque em um treinamento para ler o material e fazer a avaliação.</p></div></div>
     <div class="card card-corpo">
       <div class="linha entre"><strong>Progresso geral</strong><strong>${perc}%</strong></div>
       <div style="margin:10px 0 6px">${barra(perc, true)}</div>
@@ -45,7 +45,7 @@ export async function paginaTrilha() {
     area.append(el(`<div class="card mt">
       <div class="card-cab"><div><h3>${ic} ${esc(nome)}</h3><div class="sub">${f} de ${itens.length} concluídos${itens[0].trilhas?.nome ? ' · ' + esc(itens[0].trilhas.nome) : ''}</div></div></div>
       ${itens.map((a) => `
-        <div class="curso-mini">
+        <a class="curso-mini link" href="#/curso/${a.cursos?.id}">
           <div class="capa">${a.cursos?.categorias?.icone || '📘'}</div>
           <div class="info">
             <strong>${esc(a.cursos?.titulo)}</strong>
@@ -55,7 +55,7 @@ export async function paginaTrilha() {
             ${barra(a.progresso)}
           </div>
           <div>${statusTag(a.status, a.prazo)}</div>
-        </div>`).join('')}
+        </a>`).join('')}
     </div>`));
   });
   return w;

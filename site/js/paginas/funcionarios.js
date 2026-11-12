@@ -1,5 +1,6 @@
 import { supa, estado, ehGestao, ehGerente, ehAdmin, msgErro, gerenciarUsuario } from '../supa.js';
 import { el, esc, toast, fmtData, barra, vazio, statusTag, opcoes, lerForm, abrirModal, confirmar, comCarregando, iniciais, PAPEL, exportarCSV } from '../ui.js';
+import { urlLink, numeroWhats, mensagemPendencias, abrirWhats, copiar, pendenciasDe } from '../whats.js';
 
 const nomeLoja = (id) => estado.lojas.find((l) => l.id === id)?.nome?.replace('Vila Árabe ', '') || '—';
 const nomeCargo = (id) => estado.cargos.find((c) => c.id === id)?.nome || '—';
@@ -13,6 +14,7 @@ export async function paginaFuncionarios({ rota }) {
         <p>${gerente ? 'Colaboradores das lojas sob sua gestão.' : 'Cadastre, edite e acompanhe os colaboradores de todas as lojas.'}</p></div>
       <div class="acoes">
         <button class="btn claro" id="exportar">⬇ Exportar planilha</button>
+        <button class="btn claro" id="whats-massa">📲 Enviar pendências</button>
         <button class="btn" id="novo">+ Novo funcionário</button>
       </div>
     </div>
@@ -33,7 +35,7 @@ export async function paginaFuncionarios({ rota }) {
   let pessoas = [], stats = {};
   const carregar = async () => {
     const [p, a] = await Promise.all([
-      supa.from('perfis').select('id,nome,matricula,email,papel,loja_id,cargo_id,setor_id,ativo,data_admissao,gerente_id').order('nome'),
+      supa.from('perfis').select('id,nome,matricula,email,telefone,papel,loja_id,cargo_id,setor_id,ativo,data_admissao,gerente_id').order('nome'),
       supa.from('atribuicoes').select('perfil_id,status,prazo').limit(20000),
     ]);
     if (p.error) throw p.error;
@@ -85,6 +87,7 @@ export async function paginaFuncionarios({ rota }) {
     if (tr) abrirFicha(pessoas.find((x) => x.id === tr.dataset.id), carregar);
   });
   w.querySelector('#novo').onclick = () => formNovo(carregar);
+  w.querySelector('#whats-massa').onclick = () => enviarEmMassa(filtrados().filter((x) => x.ativo && ['funcionario', 'gerente'].includes(x.papel)), stats);
   w.querySelector('#exportar').onclick = () => {
     const lista = filtrados();
     exportarCSV('funcionarios-universidade-vila-arabe.csv',
@@ -168,13 +171,15 @@ async function abrirFicha(resumo, recarregar) {
   const corpo = el(`<div>
     <div class="ficha-topo"><div class="avatar grande">${esc(iniciais(x.nome))}</div>
       <div><h2>${esc(x.nome)}</h2><div class="s">${esc(nomeCargo(x.cargo_id))} · ${esc(nomeLoja(x.loja_id))} · ${esc(PAPEL[x.papel])}</div>
-      <div class="linha" style="margin-top:6px">${x.ativo ? '<span class="tag verde">Ativo</span>' : '<span class="tag cinza">Inativo</span>'}<span class="tag azul sem-ponto">⭐ ${x.pontos} pontos</span></div></div></div>
+      <div class="linha" style="margin-top:6px;flex-wrap:wrap">${x.ativo ? '<span class="tag verde">Ativo</span>' : '<span class="tag cinza">Inativo</span>'}<span class="tag azul sem-ponto">⭐ ${x.pontos} pontos</span>
+        ${x.ativo && ['funcionario', 'gerente'].includes(x.papel) && (ehGestao() || x.papel === 'funcionario') ? '<button class="btn pequeno" id="b-whats" style="background:#16a34a">📲 Enviar link no WhatsApp</button>' : ''}</div></div></div>
     <div class="abas mt" style="margin-left:-22px;margin-right:-22px">
       <button class="ativa" data-aba="dados">Dados</button><button data-aba="treinos">Treinamentos</button><button data-aba="integ">Integração</button>${podeEditar ? '<button data-aba="acesso">Acesso</button>' : ''}
     </div>
     <div id="aba" style="padding-top:18px"></div></div>`);
   const { el: m, fechar } = abrirModal({ titulo: 'Ficha do funcionário', corpo, tamanho: 'largo' });
   const aba = corpo.querySelector('#aba');
+  corpo.querySelector('#b-whats')?.addEventListener('click', () => enviarWhats(x, recarregar));
   const abas = {
     dados: async () => {
       if (!podeEditar) {
@@ -324,4 +329,77 @@ function editarAtribuicao(a, aoSalvar) {
     if (error) return toast(msgErro(error), 'erro');
     toast('Treinamento removido.'); fechar(); aoSalvar && aoSalvar();
   };
+}
+
+
+// ---------- WhatsApp: link pessoal + pendências ----------
+async function enviarWhats(x, recarregar) {
+  let token, pend;
+  try {
+    const [t, p] = await Promise.all([supa.rpc('link_pessoal', { p_perfil: x.id, p_novo: false }), pendenciasDe([x.id])]);
+    if (t.error) throw t.error;
+    token = t.data; pend = p[x.id] || [];
+  } catch (e) { return toast(msgErro(e), 'erro'); }
+  const corpo = el(`<div>
+    <p class="muted" style="margin-top:0">O link entra direto na Universidade, sem senha. Ele é pessoal: só envie para ${esc(x.nome.split(' ')[0])}.</p>
+    <div class="campo"><label>WhatsApp de ${esc(x.nome.split(' ')[0])}</label>
+      <input class="entrada" id="w-tel" inputmode="tel" placeholder="(31) 9 0000-0000" value="${esc(x.telefone || '')}">
+      <span class="ajuda">Sem número, o WhatsApp abre e você escolhe o contato.</span></div>
+    <div class="campo"><label>Mensagem</label><textarea class="entrada" id="w-msg" rows="10"></textarea></div>
+    <div class="linha" style="flex-wrap:wrap;gap:8px"><button class="link-btn pequeno" id="w-copiar-link">Copiar só o link</button>
+      <button class="link-btn pequeno" id="w-novo" style="color:var(--vermelho)">Gerar link novo (o antigo para de funcionar)</button></div>
+  </div>`);
+  const msg = corpo.querySelector('#w-msg');
+  const montar = () => { msg.value = mensagemPendencias(x.nome, pend, urlLink(token)); };
+  montar();
+  const { el: m, fechar } = abrirModal({ titulo: 'Enviar pelo WhatsApp', corpo, tamanho: 'estreito',
+    rodape: `<button class="btn claro" data-copiar>Copiar mensagem</button><button class="btn" data-abrir style="background:#16a34a">Abrir no WhatsApp</button>` });
+  const salvarTel = async () => {
+    const tel = corpo.querySelector('#w-tel').value.trim();
+    if (tel && tel !== (x.telefone || '')) {
+      if (!numeroWhats(tel)) { toast('Confira o número: use DDD + celular.', 'erro'); return false; }
+      const { error } = await supa.from('perfis').update({ telefone: tel }).eq('id', x.id);
+      if (!error) { x.telefone = tel; recarregar && recarregar(); }
+    }
+    return true;
+  };
+  m.querySelector('[data-abrir]').onclick = async () => { if (!(await salvarTel())) return; abrirWhats(x.telefone, msg.value); fechar(); };
+  m.querySelector('[data-copiar]').onclick = async () => { await salvarTel(); toast((await copiar(msg.value)) ? 'Mensagem copiada.' : 'Não foi possível copiar.'); };
+  corpo.querySelector('#w-copiar-link').onclick = async () => toast((await copiar(urlLink(token))) ? 'Link copiado.' : 'Não foi possível copiar.');
+  corpo.querySelector('#w-novo').onclick = async () => {
+    if (!(await confirmar('Gerar um link novo? O link enviado antes deixa de funcionar.', { botao: 'Gerar novo' }))) return;
+    const { data, error } = await supa.rpc('link_pessoal', { p_perfil: x.id, p_novo: true });
+    if (error) return toast(msgErro(error), 'erro');
+    token = data; montar(); toast('Link novo gerado.');
+  };
+}
+
+async function enviarEmMassa(pessoas, stats) {
+  const comPend = pessoas.filter((p) => { const s = stats[p.id]; return s && s.t > s.f; });
+  if (!comPend.length) return toast('Ninguém com treinamento pendente neste filtro.');
+  const corpo = el(`<div><div class="vazio"><div class="spinner" style="margin:0 auto"></div></div></div>`);
+  const { el: m } = abrirModal({ titulo: `Enviar pendências · ${comPend.length} pessoa(s)`, corpo, tamanho: 'largo' });
+  let links = {}, pend = {};
+  try {
+    const ids = comPend.map((p) => p.id);
+    const [l, p] = await Promise.all([supa.rpc('links_pessoais', { p_ids: ids }), pendenciasDe(ids)]);
+    if (l.error) throw l.error;
+    (l.data || []).forEach((r) => (links[r.perfil_id] = r.token));
+    pend = p;
+  } catch (e) { corpo.innerHTML = vazio(msgErro(e), '⚠️'); return; }
+  const lista = comPend.filter((p) => links[p.id] && (pend[p.id] || []).length);
+  corpo.innerHTML = `<p class="muted" style="margin-top:0">Toque em <strong>Enviar</strong> em cada pessoa: o WhatsApp abre com a mensagem pronta e o link pessoal (sem senha). Quem não tem celular cadastrado: o WhatsApp abre para você escolher o contato.</p>
+    <ul class="lista-simples" style="margin:0 -16px">${lista.map((p) => `<li data-id="${p.id}">
+      <div class="principal"><strong>${esc(p.nome)}</strong><span>${esc(nomeLoja(p.loja_id))} · ${(pend[p.id] || []).length} pendente(s)${p.telefone ? ' · ' + esc(p.telefone) : ' · sem celular'}</span></div>
+      <button class="btn pequeno claro" data-copiar title="Copiar mensagem">Copiar</button>
+      <button class="btn pequeno" data-enviar style="background:#16a34a">Enviar</button></li>`).join('')}</ul>`;
+  const msgDe = (p) => mensagemPendencias(p.nome, pend[p.id] || [], urlLink(links[p.id]));
+  corpo.querySelectorAll('li[data-id]').forEach((li) => {
+    const p = lista.find((x) => x.id === li.dataset.id);
+    li.querySelector('[data-enviar]').onclick = (ev) => {
+      abrirWhats(p.telefone, msgDe(p));
+      ev.currentTarget.textContent = 'Enviado ✓'; ev.currentTarget.classList.add('claro'); ev.currentTarget.style.background = '';
+    };
+    li.querySelector('[data-copiar]').onclick = async () => toast((await copiar(msgDe(p))) ? 'Mensagem copiada.' : 'Não foi possível copiar.');
+  });
 }
