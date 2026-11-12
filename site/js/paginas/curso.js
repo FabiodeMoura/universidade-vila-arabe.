@@ -143,7 +143,9 @@ export async function paginaCurso({ param }) {
     const finalizadas = tentativas.filter((t) => t.status !== 'em_andamento');
     const ultima = finalizadas[0];
     const aprovado = atrib?.status === 'aprovado';
-    const { data: restantes } = await supa.rpc('tentativas_restantes', { p: me, av: avaliacao.id });
+    // se a contagem falhar, mostra o botão mesmo assim: o servidor confere as tentativas ao começar
+    const rt = await supa.rpc('minhas_tentativas', { p_avaliacao: avaliacao.id });
+    const restantes = rt.error || rt.data == null ? Math.max(1, avaliacao.tentativas_max - finalizadas.length) : rt.data;
     const emAndamento = tentativas.find((t) => t.status === 'em_andamento');
     const card = el(`<div class="card aula"><div class="card-cab"><div><div class="muted pequeno">Avaliação</div><h3>${esc(avaliacao.titulo || 'Avaliação')}</h3></div></div>
       <div class="card-corpo">
