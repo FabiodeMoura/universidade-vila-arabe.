@@ -18,7 +18,7 @@ export async function paginaCurso({ param }) {
     supa.from('atribuicoes').select('id,status,progresso,nota,prazo,concluido_em').eq('curso_id', id).eq('perfil_id', me).maybeSingle(),
   ]);
   if (c.error) throw c.error;
-  if (!c.data) return el(`<div class="card">${vazio('Treinamento não encontrado ou ainda não publicado.', '🔎')}</div>`);
+  if (!c.data) return el(`<div class="card">${vazio('Este curso não está disponível para o seu cargo. Se precisar dele, fale com seu gestor imediato.', '🔒')}</div>`);
   const curso = c.data;
   const aulas = (mods.data || []).flatMap((m) => (m.aulas || []).sort((a, b) => a.ordem - b.ordem).map((a) => ({ ...a, modulo: m.titulo })));
   const avaliacao = (av.data || [])[0] || null;

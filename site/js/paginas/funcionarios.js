@@ -111,7 +111,7 @@ async function camposPessoa(x = {}, novo = false) {
     <div class="campo inteiro"><label>Nome completo *</label><input class="entrada" name="nome" required value="${esc(x.nome || '')}"></div>
     <div class="campo"><label>Matrícula ${novo ? '*' : ''}</label><input class="entrada" name="matricula" value="${esc(x.matricula || '')}" ${novo ? '' : 'readonly'} placeholder="Usada para entrar no sistema"></div>
     <div class="campo"><label>CPF</label><input class="entrada" name="cpf" value="${esc(x.cpf || '')}" inputmode="numeric" placeholder="000.000.000-00"></div>
-    <div class="campo"><label>E-mail ${novo ? '' : '(login)'}</label><input class="entrada" name="email" type="email" value="${esc(x.email?.endsWith('.local') ? '' : (x.email || ''))}" ${novo ? '' : 'readonly'} placeholder="Opcional"></div>
+    <div class="campo"><label>E-mail (login)</label><input class="entrada" name="email" type="email" autocomplete="off" value="${esc(x.email?.endsWith('.local') ? '' : (x.email || ''))}" placeholder="${novo ? 'Opcional: o colaborador pode informar no convite' : 'nome@email.com'}"></div>
     <div class="campo"><label>Telefone</label><input class="entrada" name="telefone" value="${esc(x.telefone || '')}" inputmode="tel" placeholder="(31) 9 0000-0000"></div>
     <div class="campo"><label>Loja *</label><select class="entrada" name="loja_id" required>${opcoes(lojas, x.loja_id || (lojas.length === 1 ? lojas[0].id : ''), { vazio: 'Selecione' })}</select></div>
     <div class="campo"><label>Cargo *</label><select class="entrada" name="cargo_id" required>${opcoes(estado.cargos.filter((c) => c.ativo || c.id === x.cargo_id), x.cargo_id, { vazio: 'Selecione' })}</select>
@@ -153,11 +153,14 @@ async function formNovo(recarregar) {
       try {
         const r = await gerenciarUsuario({ acao: 'criar', dados: d });
         fechar();
-        abrirModal({ titulo: 'Funcionário cadastrado ✅', tamanho: 'estreito', corpo: `
+        const { el: mOk } = abrirModal({ titulo: 'Funcionário cadastrado ✅', tamanho: 'estreito', corpo: `
           <p style="margin-top:0"><strong>${esc(d.nome)}</strong> já pode entrar na Universidade.</p>
           <div class="caixa-senha"><div class="pequeno muted">Login</div><code>${esc(d.matricula)}</code>
             <div class="pequeno muted" style="margin-top:8px">Senha inicial</div><code>${esc(r.senha)}</code></div>
-          <p class="pequeno muted">Anote e entregue ao funcionário. ${r.treinamentos ? `<strong>${r.treinamentos} treinamento(s)</strong> da trilha dele já foram atribuídos automaticamente.` : 'Nenhuma trilha automática encontrada para este cargo.'}</p>` });
+          <p class="pequeno muted">${r.treinamentos ? `<strong>${r.treinamentos} treinamento(s)</strong> da trilha dele já foram atribuídos automaticamente.` : 'Nenhuma trilha automática encontrada para este cargo.'}</p>
+          <p class="pequeno" style="margin-bottom:0">Envie o convite: o colaborador completa o cadastro e cria a própria senha.</p>`,
+          rodape: `<button class="btn" data-convite style="background:#16a34a">📲 Enviar convite no WhatsApp</button>` });
+        mOk.querySelector('[data-convite]')?.addEventListener('click', () => enviarConvite({ id: r.id, nome: d.nome, telefone: d.telefone || '' }, recarregar));
         recarregar();
       } catch (e) { toast(msgErro(e), 'erro'); }
     });
@@ -173,14 +176,14 @@ async function abrirFicha(resumo, recarregar) {
     <div class="ficha-topo"><div class="avatar grande">${esc(iniciais(x.nome))}</div>
       <div><h2>${esc(x.nome)}</h2><div class="s">${esc(nomeCargo(x.cargo_id))} · ${esc(nomeLoja(x.loja_id))} · ${esc(PAPEL[x.papel])}</div>
       <div class="linha" style="margin-top:6px;flex-wrap:wrap">${x.ativo ? '<span class="tag verde">Ativo</span>' : '<span class="tag cinza">Inativo</span>'}<span class="tag azul sem-ponto">⭐ ${x.pontos} pontos</span>
-        ${x.ativo && ['funcionario', 'gerente'].includes(x.papel) && (ehGestao() || x.papel === 'funcionario') ? '<button class="btn pequeno" id="b-whats" style="background:#16a34a">📲 Enviar link no WhatsApp</button>' : ''}</div></div></div>
+        ${x.ativo && ['funcionario', 'gerente'].includes(x.papel) && (ehGestao() || x.papel === 'funcionario') ? '<button class="btn pequeno" id="b-whats" style="background:#16a34a">📲 Convite de cadastro no WhatsApp</button>' : ''}</div></div></div>
     <div class="abas mt" style="margin-left:-22px;margin-right:-22px">
       <button class="ativa" data-aba="dados">Dados</button><button data-aba="treinos">Treinamentos</button><button data-aba="integ">Integração</button>${podeEditar ? '<button data-aba="acesso">Acesso</button>' : ''}
     </div>
     <div id="aba" style="padding-top:18px"></div></div>`);
   const { el: m, fechar } = abrirModal({ titulo: 'Ficha do funcionário', corpo, tamanho: 'largo' });
   const aba = corpo.querySelector('#aba');
-  corpo.querySelector('#b-whats')?.addEventListener('click', () => enviarWhats(x, recarregar));
+  corpo.querySelector('#b-whats')?.addEventListener('click', () => enviarConvite(x, recarregar));
   const abas = {
     dados: async () => {
       if (!podeEditar) {
@@ -192,13 +195,20 @@ async function abrirFicha(resumo, recarregar) {
       form.onsubmit = async (ev) => {
         ev.preventDefault();
         const d = lerForm(form);
+        const novoEmail = String(d.email || '').trim().toLowerCase();
+        const emailAtual = x.email?.endsWith('.local') ? '' : (x.email || '').toLowerCase();
         delete d.matricula; delete d.email;
+        if (novoEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(novoEmail)) return toast('Informe um e-mail válido.', 'erro');
         const operacional = !['admin', 'rh'].includes(d.papel || x.papel);
         if (!d.nome || (operacional && (!d.loja_id || !d.cargo_id))) return toast('Nome, loja e cargo são obrigatórios.', 'erro');
         const cargoMudou = d.cargo_id !== x.cargo_id;
         await comCarregando(form.querySelector('button[type=submit]'), async () => {
           const { error: e } = await supa.from('perfis').update(d).eq('id', x.id);
           if (e) return toast(msgErro(e), 'erro');
+          if (novoEmail && novoEmail !== emailAtual) {
+            try { await gerenciarUsuario({ acao: 'alterar_email', perfil_id: x.id, email: novoEmail }); x.email = novoEmail; }
+            catch (er) { return toast('Dados salvos, mas o e-mail não: ' + msgErro(er), 'erro'); }
+          }
           if (cargoMudou && ehGestao()) await supa.from('promocoes').insert({ perfil_id: x.id, cargo_anterior: x.cargo_id, cargo_novo: d.cargo_id, observacao: 'Alteração de cargo no cadastro' });
           Object.assign(x, d);
           toast(cargoMudou ? 'Dados salvos. A trilha do novo cargo foi atribuída.' : 'Dados salvos.');
@@ -340,6 +350,42 @@ function editarAtribuicao(a, aoSalvar) {
 
 
 // ---------- WhatsApp: link pessoal + pendências ----------
+// ---------- WhatsApp: convite para completar o cadastro e criar a senha ----------
+async function enviarConvite(x, recarregar) {
+  let token;
+  try {
+    const { data, error } = await supa.rpc('criar_convite', { p_perfil: x.id });
+    if (error) throw error;
+    token = data;
+  } catch (e) { return toast(msgErro(e), 'erro'); }
+  const link = `${location.origin}${location.pathname}#/convite/${token}`;
+  const primeiro = String(x.nome || '').split(' ')[0];
+  const corpo = el(`<div>
+    <p class="muted" style="margin-top:0">${esc(primeiro)} abre o link, confere os dados, informa o e-mail e cria a própria senha. O link vale <strong>uma vez</strong> e por <strong>7 dias</strong>. Depois, ${esc(primeiro)} entra sempre com e-mail e senha.</p>
+    <div class="campo"><label>WhatsApp de ${esc(primeiro)}</label>
+      <input class="entrada" id="w-tel" inputmode="tel" placeholder="(31) 9 0000-0000" value="${esc(x.telefone || '')}">
+      <span class="ajuda">Sem número, o WhatsApp abre e você escolhe o contato.</span></div>
+    <div class="campo"><label>Mensagem</label><textarea class="entrada" id="w-msg" rows="8"></textarea></div>
+    <button class="link-btn pequeno" id="w-copiar-link">Copiar só o link</button>
+  </div>`);
+  const msg = corpo.querySelector('#w-msg');
+  msg.value = `Olá, ${primeiro}! 👋\nBem-vindo(a) à Universidade Vila Árabe.\n\nToque no link para completar seu cadastro e criar sua senha:\n${link}\n\nO link vale por 7 dias. Depois é só entrar com seu e-mail e a senha que você criou.\nQualquer dúvida, fale com seu gerente.`;
+  const { el: m, fechar } = abrirModal({ titulo: 'Convite de cadastro', corpo, tamanho: 'estreito',
+    rodape: `<button class="btn claro" data-copiar>Copiar mensagem</button><button class="btn" data-abrir style="background:#16a34a">Abrir no WhatsApp</button>` });
+  const salvarTel = async () => {
+    const tel = corpo.querySelector('#w-tel').value.trim();
+    if (tel && tel !== (x.telefone || '')) {
+      if (!numeroWhats(tel)) { toast('Confira o número: use DDD + celular.', 'erro'); return false; }
+      const { error } = await supa.from('perfis').update({ telefone: tel }).eq('id', x.id);
+      if (!error) { x.telefone = tel; recarregar && recarregar(); }
+    }
+    return true;
+  };
+  m.querySelector('[data-abrir]').onclick = async () => { if (!(await salvarTel())) return; abrirWhats(x.telefone, msg.value); fechar(); };
+  m.querySelector('[data-copiar]').onclick = async () => { await salvarTel(); toast((await copiar(msg.value)) ? 'Mensagem copiada.' : 'Não foi possível copiar.'); };
+  corpo.querySelector('#w-copiar-link').onclick = async () => toast((await copiar(link)) ? 'Link copiado.' : 'Não foi possível copiar.');
+}
+
 async function enviarWhats(x, recarregar) {
   let token, pend;
   try {
@@ -348,7 +394,7 @@ async function enviarWhats(x, recarregar) {
     token = t.data; pend = p[x.id] || [];
   } catch (e) { return toast(msgErro(e), 'erro'); }
   const corpo = el(`<div>
-    <p class="muted" style="margin-top:0">O link entra direto na Universidade, sem senha. Ele é pessoal: só envie para ${esc(x.nome.split(' ')[0])}.</p>
+    <p class="muted" style="margin-top:0">A mensagem leva o endereço da Universidade: ${esc(x.nome.split(' ')[0])} entra com e-mail e senha.</p>
     <div class="campo"><label>WhatsApp de ${esc(x.nome.split(' ')[0])}</label>
       <input class="entrada" id="w-tel" inputmode="tel" placeholder="(31) 9 0000-0000" value="${esc(x.telefone || '')}">
       <span class="ajuda">Sem número, o WhatsApp abre e você escolhe o contato.</span></div>
@@ -395,7 +441,7 @@ async function enviarEmMassa(pessoas, stats) {
     pend = p;
   } catch (e) { corpo.innerHTML = vazio(msgErro(e), '⚠️'); return; }
   const lista = comPend.filter((p) => links[p.id] && (pend[p.id] || []).length);
-  corpo.innerHTML = `<p class="muted" style="margin-top:0">Toque em <strong>Enviar</strong> em cada pessoa: o WhatsApp abre com a mensagem pronta e o link pessoal (sem senha). Quem não tem celular cadastrado: o WhatsApp abre para você escolher o contato.</p>
+  corpo.innerHTML = `<p class="muted" style="margin-top:0">Toque em <strong>Enviar</strong> em cada pessoa: o WhatsApp abre com a mensagem pronta e o endereço da Universidade (cada um entra com e-mail e senha). Quem não tem celular cadastrado: o WhatsApp abre para você escolher o contato.</p>
     <ul class="lista-simples" style="margin:0 -16px">${lista.map((p) => `<li data-id="${p.id}">
       <div class="principal"><strong>${esc(p.nome)}</strong><span>${esc(nomeLoja(p.loja_id))} · ${(pend[p.id] || []).length} pendente(s)${p.telefone ? ' · ' + esc(p.telefone) : ' · sem celular'}</span></div>
       <button class="btn pequeno claro" data-copiar title="Copiar mensagem">Copiar</button>
