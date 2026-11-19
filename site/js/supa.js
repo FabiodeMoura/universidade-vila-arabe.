@@ -2,7 +2,8 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_CHAVE } from './config.js';
 
 export const supa = createClient(SUPABASE_URL, SUPABASE_CHAVE, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'uva-sessao' },
+  // A sessão fica só nesta aba: ao fechar o navegador, é preciso entrar de novo com e-mail e senha.
+  auth: { persistSession: true, storage: window.sessionStorage, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'uva-sessao' },
 });
 
 // Estado global do usuário logado

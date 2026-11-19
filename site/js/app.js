@@ -46,6 +46,7 @@ async function iniciar() {
   if (hash.includes('type=recovery')) { location.hash = '#/nova-senha'; }
   const [r0, r1, r2] = partesRota();
   if (r0 === 'l' && r1) return entrarPorLink(r1, r2);
+  if (r0 === 'convite' && r1) return telaConvite(r1);
   const { data: { session } } = await supa.auth.getSession();
   if (!session && r0 === 'validar') return telaValidarPublica(r1);
   if (!session) return telaLogin();
@@ -98,6 +99,68 @@ async function entrarPorLink(token, cursoId) {
     history.replaceState(null, '', location.pathname);
     telaLogin(msgErro(e));
   }
+}
+
+// ---------------- convite: o colaborador completa o cadastro e cria a senha ----------------
+async function chamarConvite(corpo) {
+  const { data, error } = await supa.functions.invoke('concluir-cadastro', { body: corpo });
+  if (error) {
+    let det = null;
+    try { det = await error.context.json(); } catch (_) { /* sem corpo */ }
+    throw new Error(det?.erro || 'Não foi possível abrir o cadastro. Tente de novo.');
+  }
+  if (data?.erro) throw new Error(data.erro);
+  return data;
+}
+
+async function telaConvite(token) {
+  app.innerHTML = `<div class="carregando-tela"><div style="text-align:center"><div class="spinner" style="margin:0 auto"></div><p class="muted">Abrindo seu cadastro…</p></div></div>`;
+  let p;
+  try { p = await chamarConvite({ token, acao: 'ver' }); }
+  catch (e) { history.replaceState(null, '', location.pathname); return telaLogin(msgErro(e)); }
+  app.innerHTML = '';
+  const t = el(`<div class="login">
+    <section class="login-arte">
+      <div class="marca"><img src="img/icone.svg" alt=""><div><strong>Universidade Vila Árabe</strong><span>Escola de talentos</span></div></div>
+      <div><h1>Bem-vindo(a), ${esc(String(p.nome || '').split(' ')[0])}!</h1>
+        <p>Complete seu cadastro e crie sua senha. Depois é só entrar com seu e-mail e senha para fazer seus treinamentos.</p></div>
+      <small style="color:rgba(255,255,255,.5)">Padarias · Lanchonetes · Empórios</small>
+    </section>
+    <section class="login-form-lado">
+      <form class="login-form" novalidate autocomplete="on">
+        <h2>Completar cadastro</h2>
+        <p class="sub">${esc(p.nome)}${p.matricula ? ' · Matrícula ' + esc(p.matricula) : ''}${p.cargo ? '<br>' + esc(p.cargo) : ''}${p.loja ? ' · ' + esc(p.loja) : ''}</p>
+        <div class="campo"><label for="c-email">Seu e-mail *</label><input class="entrada" id="c-email" type="email" autocomplete="email" inputmode="email" required value="${esc(p.email || '')}" placeholder="nome@email.com"></div>
+        <div class="campo"><label for="c-tel">Celular (WhatsApp)</label><input class="entrada" id="c-tel" inputmode="tel" autocomplete="tel" value="${esc(p.telefone || '')}" placeholder="(31) 9 0000-0000"></div>
+        <div class="campo"><label for="c-cpf">CPF</label><input class="entrada" id="c-cpf" inputmode="numeric" value="${esc(p.cpf || '')}" placeholder="000.000.000-00"></div>
+        <div class="campo"><label for="c-s1">Crie sua senha *</label><input class="entrada" id="c-s1" type="password" autocomplete="new-password" required placeholder="Mínimo de 6 caracteres"></div>
+        <div class="campo"><label for="c-s2">Repita a senha *</label><input class="entrada" id="c-s2" type="password" autocomplete="new-password" required></div>
+        <button class="btn bloco" type="submit">Concluir cadastro e entrar</button>
+        <div class="login-rodape">Problemas? Procure o gerente da sua loja ou o RH.</div>
+      </form>
+    </section></div>`);
+  app.append(t);
+  const f = t.querySelector('form');
+  f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const email = f.querySelector('#c-email').value.trim().toLowerCase();
+    const s1 = f.querySelector('#c-s1').value, s2 = f.querySelector('#c-s2').value;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Informe um e-mail válido.', 'erro');
+    if (s1.length < 6) return toast('A senha precisa ter pelo menos 6 caracteres.', 'erro');
+    if (s1 !== s2) return toast('As senhas não conferem.', 'erro');
+    await comCarregando(f.querySelector('button[type=submit]'), async () => {
+      try {
+        await chamarConvite({ token, acao: 'concluir', email, senha: s1, telefone: f.querySelector('#c-tel').value.trim(), cpf: f.querySelector('#c-cpf').value.trim() });
+        const { data: atual } = await supa.auth.getSession();
+        if (atual.session) await supa.auth.signOut({ scope: 'local' });
+        const { data, error } = await supa.auth.signInWithPassword({ email, password: s1 });
+        if (error) throw error;
+        history.replaceState(null, '', location.pathname + '#/trilha');
+        toast('Cadastro concluído! Bem-vindo(a).');
+        await entrar(data.user);
+      } catch (e) { toast(msgErro(e), 'erro'); }
+    });
+  };
 }
 
 function telaValidarPublica(codigo) {

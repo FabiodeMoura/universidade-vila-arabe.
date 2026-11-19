@@ -1,9 +1,9 @@
-// Envio pelo WhatsApp: link pessoal (entra sem senha) + lista de pendências
+// Envio pelo WhatsApp: endereço da Universidade + lista de pendências (entra com e-mail e senha)
 import { supa } from './supa.js';
 import { fmtData } from './ui.js';
 
-// Endereço do link pessoal: https://site/#/l/<token>
-export const urlLink = (token, cursoId) => `${location.origin}${location.pathname}#/l/${token}${cursoId ? '/' + cursoId : ''}`;
+// Endereço da Universidade (o acesso sem senha foi desativado)
+export const urlLink = (_token, cursoId) => `${location.origin}${location.pathname}${cursoId ? '#/curso/' + cursoId : ''}`;
 
 // "(31) 9 8888-7777" -> "5531988887777". Vazio se não parecer celular.
 export function numeroWhats(tel) {
@@ -19,8 +19,8 @@ export function mensagemPendencias(nome, pendencias, link) {
   const linhas = pendencias.slice(0, 8).map((p) => `• ${p.titulo}${p.prazo ? ` (até ${fmtData(p.prazo)})` : ''}`);
   if (n > 8) linhas.push(`• e mais ${n - 8}`);
   return n
-    ? `Olá, ${primeiro}! 👋\nVocê tem ${n} treinamento${n > 1 ? 's' : ''} para fazer na Universidade Vila Árabe:\n${linhas.join('\n')}\n\nÉ só tocar no seu link pessoal (não precisa de senha):\n${link}\n\nQualquer dúvida, fale com seu gerente.`
-    : `Olá, ${primeiro}! 👋\nEste é o seu link pessoal da Universidade Vila Árabe (não precisa de senha):\n${link}\n\nGuarde esta mensagem para entrar quando quiser.`;
+    ? `Olá, ${primeiro}! 👋\nVocê tem ${n} treinamento${n > 1 ? 's' : ''} para fazer na Universidade Vila Árabe:\n${linhas.join('\n')}\n\nEntre na Universidade com seu e-mail e senha:\n${link}\n\nQualquer dúvida, fale com seu gerente.`
+    : `Olá, ${primeiro}! 👋\nEste é o endereço da Universidade Vila Árabe. Entre com seu e-mail e senha:\n${link}\n\nSe esqueceu a senha, fale com seu gerente ou com o RH.`;
 }
 
 export function abrirWhats(tel, texto) {
